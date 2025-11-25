@@ -240,6 +240,7 @@
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 
   <script>
     // ============================
@@ -258,6 +259,7 @@
 
     let auth = null;
     let currentUser = null;
+    let db = null; // Firestore will go here
 
     const authStatusEl = document.getElementById("authStatus");
     const authWarningEl = document.getElementById("authWarning");
@@ -282,8 +284,79 @@
     }
 
     function saveItems(items) {
-      localStorage.setItem(getStorageKey(), JSON.stringify(items));
+       // Always update localStorage immediately for fast UI + offline
+       localStorage.setItem(getStorageKey(), JSON.stringify(items));
+
+       // If we have a logged-in user and Firestore, sync to the cloud as well
+       if (currentUser && db) {
+         syncItemsToFirestore(items);
+       }
+     }
+// ----------------------------
+// Firestore sync helpers
+// ----------------------------
+
+// Push the full items array to Firestore for the current user.
+// Simple approach: clear the existing docs and rewrite them.
+async function syncItemsToFirestore(items) {
+  try {
+    if (!currentUser || !db) return;
+
+    const colRef = db
+      .collection("users")
+      .doc(currentUser.uid)
+      .collection("items");
+
+    // Start a batch so we can do everything as one write
+    const batch = db.batch();
+
+    // 1) Delete existing docs
+    const existingSnap = await colRef.get();
+    existingSnap.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+
+    // 2) Write current items
+    items.forEach(item => {
+      const docRef = colRef.doc(item.id);
+      batch.set(docRef, item);
+    });
+
+    await batch.commit();
+  } catch (err) {
+    console.error("Failed to sync items to Firestore:", err);
+    // Optional: you could show a toast/alert here in the future
+  }
+}
+
+// Load items from Firestore for the current user,
+// save them into localStorage, then render the table.
+async function loadItemsFromFirestore() {
+  try {
+    if (!currentUser || !db) {
+      renderItems();
+      return;
     }
+
+    const colRef = db
+      .collection("users")
+      .doc(currentUser.uid)
+      .collection("items");
+
+    const snap = await colRef.get();
+    const items = snap.docs.map(doc => doc.data());
+
+    // Cache in localStorage so the rest of the app can stay synchronous
+    localStorage.setItem(getStorageKey(), JSON.stringify(items));
+
+    renderItems();
+  } catch (err) {
+    console.error("Failed to load items from Firestore:", err);
+    // Fallback: still render whatever is in localStorage
+    renderItems();
+  }
+}
+
 
     function getPriorityLabel(p) {
       return p === 3 ? "High" : p === 2 ? "Medium" : "Low";
@@ -488,16 +561,23 @@
     }
 
     function initAuth() {
-      firebase.initializeApp(firebaseConfig);
-      auth = firebase.auth();
+       firebase.initializeApp(firebaseConfig);
+       auth = firebase.auth();
+       db = firebase.firestore(); // Initialize Firestore
 
-      auth.onAuthStateChanged((user) => {
-        currentUser = user || null;
-        updateAuthUI();
-        renderItems();
-      });
-    }
+       auth.onAuthStateChanged((user) => {
+         currentUser = user || null;
+         updateAuthUI();
 
+         // When a user is logged in, try to pull their items from Firestore.
+         // If not logged in, we just render whatever is in localStorage.
+         if (currentUser) {
+           loadItemsFromFirestore();
+         } else {
+           renderItems();
+         }
+       });
+     }
     async function handleEmailLinkSignIn() {
       if (!auth) return;
       if (!auth.isSignInWithEmailLink(window.location.href)) return;
