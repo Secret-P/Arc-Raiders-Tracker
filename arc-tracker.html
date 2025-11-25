@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Arc Raiders – Loot Tracker</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.5rem;
+      background: #0b1020;
+      color: #f5f5f5;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.7rem;
+    }
+    .app-shell {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #151b30;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+    }
+    .form-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .form-row > div {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 140px;
+    }
+    label {
+      font-size: 0.8rem;
+      opacity: 0.8;
+      margin-bottom: 0.25rem;
+    }
+    input[type="text"], input[type="number"], select {
+      padding: 0.4rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid #303854;
+      background: #0f1424;
+      color: #f5f5f5;
+    }
+    input[type="number"] {
+      width: 100%;
+    }
+    textarea {
+      width: 100%;
+      min-height: 50px;
+      resize: vertical;
+      padding: 0.4rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid #303854;
+      background: #0f1424;
+      color: #f5f5f5;
+    }
+    button {
+      border: none;
+      border-radius: 6px;
+      padding: 0.45rem 0.9rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .btn-primary {
+      background: #4f8cff;
+      color: #fff;
+    }
+    .btn-secondary {
+      background: #303854;
+      color: #fff;
+    }
+    .btn-small {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      margin-left: 0.25rem;
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0.5rem 0 1rem;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .toolbar select {
+      max-width: 200px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+    th, td {
+      padding: 0.5rem;
+      border-bottom: 1px solid #262c46;
+      text-align: left;
+    }
+    th {
+      background: #1b2238;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    tr.done {
+      opacity: 0.5;
+    }
+    .priority-pill {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .priority-high { background: #ff4f6a; color: #fff; }
+    .priority-medium { background: #ffb74f; color: #201010; }
+    .priority-low { background: #66c56b; color: #041407; }
+    .status-badge {
+      font-size: 0.75rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      background: #303854;
+    }
+    .status-active {
+      background: #ffb74f;
+      color: #201010;
+    }
+    .status-done {
+      background: #66c56b;
+      color: #041407;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 1rem;
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <h1>Arc Raiders – Loot Tracker</h1>
+    <p style="opacity:0.8;font-size:0.9rem;">
+      Add the materials you’re farming, set how many you need, and track your progress between runs.
+    </p>
+
+    <!-- Add / edit form -->
+    <div id="form">
+      <div class="form-row">
+        <div>
+          <label for="itemName">Item name</label>
+          <input id="itemName" type="text" placeholder="e.g. Alloy Composite, Flux Capacitator">
+        </div>
+        <div>
+          <label for="itemCategory">Category (optional)</label>
+          <input id="itemCategory" type="text" placeholder="Weapon upgrade, Craft mat, etc.">
+        </div>
+        <div>
+          <label for="itemPriority">Priority</label>
+          <select id="itemPriority">
+            <option value="3">High</option>
+            <option value="2">Medium</option>
+            <option value="1">Low</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label for="itemNeeded">Needed</label>
+          <input id="itemNeeded" type="number" min="1" step="1" value="1">
+        </div>
+        <div>
+          <label for="itemHave">Have</label>
+          <input id="itemHave" type="number" min="0" step="1" value="0">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label for="itemNotes">Notes (where it drops, etc.)</label>
+          <textarea id="itemNotes" placeholder="e.g. Drops in canyon raid, only at night, from tank enemies."></textarea>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="addItemBtn">Add / Update Item</button>
+      <button class="btn-secondary" id="clearFormBtn">Clear Form</button>
+      <input type="hidden" id="editingId" value="">
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div>
+        <strong>Filter:</strong>
+        <select id="filterStatus">
+          <option value="all">All items</option>
+          <option value="active">Only items still farming</option>
+          <option value="done">Only completed</option>
+        </select>
+      </div>
+      <div>
+        <strong>Sort:</strong>
+        <select id="sortMode">
+          <option value="priority">Priority & Remaining</option>
+          <option value="name">Name (A–Z)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Items table -->
+    <div id="itemsContainer"></div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = "arc_raiders_loot_v1";
+
+    function loadItems() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        console.error("Failed to load items", e);
+        return [];
+      }
+    }
+
+    function saveItems(items) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    }
+
+    function getPriorityLabel(p) {
+      if (p === 3) return "High";
+      if (p === 2) return "Medium";
+      return "Low";
+    }
+
+    function renderItems() {
+      const container = document.getElementById("itemsContainer");
+      const items = loadItems();
+
+      const filterStatus = document.getElementById("filterStatus").value;
+      const sortMode = document.getElementById("sortMode").value;
+
+      let filtered = items.map(i => ({
+        ...i,
+        remaining: Math.max(i.needed - i.have, 0),
+        done: i.have >= i.needed
+      }));
+
+      if (filterStatus === "active") {
+        filtered = filtered.filter(i => !i.done);
+      } else if (filterStatus === "done") {
+        filtered = filtered.filter(i => i.done);
+      }
+
+      if (sortMode === "priority") {
+        filtered.sort((a, b) => {
+          // active items before done
+          if (a.done !== b.done) return a.done - b.done;
+          // higher priority first
+          if (b.priority !== a.priority) return b.priority - a.priority;
+          // fewer remaining first
+          if (a.remaining !== b.remaining) return a.remaining - b.remaining;
+          return a.name.localeCompare(b.name);
+        });
+      } else if (sortMode === "name") {
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state">No items yet. Add something above to start tracking.</div>';
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Category</th>
+              <th>Priority</th>
+              <th>Have / Needed</th>
+              <th>Remaining</th>
+              <th>Status</th>
+              <th>Notes</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      for (const item of filtered) {
+        const priorityClass =
+          item.priority === 3 ? "priority-high" :
+          item.priority === 2 ? "priority-medium" : "priority-low";
+
+        const statusClass = item.done ? "status-done" : "status-active";
+        const statusText = item.done ? "Done" : "Farming";
+
+        html += `
+          <tr class="${item.done ? "done" : ""}">
+            <td>${item.name}</td>
+            <td>${item.category || ""}</td>
+            <td>
+              <span class="priority-pill ${priorityClass}">
+                ${getPriorityLabel(item.priority)}
+              </span>
+            </td>
+            <td>${item.have} / ${item.needed}</td>
+            <td>${Math.max(item.needed - item.have, 0)}</td>
+            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+            <td>${item.notes ? item.notes.replace(/\n/g, "<br>") : ""}</td>
+            <td>
+              <button class="btn-small btn-secondary" onclick="editItem('${item.id}')">Edit</button>
+              <button class="btn-small btn-secondary" onclick="adjustHave('${item.id}', 1)">+1</button>
+              <button class="btn-small btn-secondary" onclick="adjustHave('${item.id}', -1)">-1</button>
+              <button class="btn-small btn-secondary" onclick="deleteItem('${item.id}')">✕</button>
+            </td>
+          </tr>
+        `;
+      }
+
+      html += "</tbody></table>";
+      container.innerHTML = html;
+    }
+
+    function uuid() {
+      return "id-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+
+    function addOrUpdateItem() {
+      const name = document.getElementById("itemName").value.trim();
+      if (!name) return;
+
+      const category = document.getElementById("itemCategory").value.trim();
+      const priority = parseInt(document.getElementById("itemPriority").value, 10) || 1;
+      const needed = Math.max(parseInt(document.getElementById("itemNeeded").value, 10) || 1, 1);
+      const have = Math.max(parseInt(document.getElementById("itemHave").value, 10) || 0, 0);
+      const notes = document.getElementById("itemNotes").value.trim();
+      const editingId = document.getElementById("editingId").value;
+
+      let items = loadItems();
+
+      if (editingId) {
+        items = items.map(i =>
+          i.id === editingId
+            ? { ...i, name, category, priority, needed, have, notes }
+            : i
+        );
+      } else {
+        // if item name already exists, update that instead of adding duplicate
+        const existing = items.find(i => i.name.toLowerCase() === name.toLowerCase());
+        if (existing) {
+          items = items.map(i =>
+            i.id === existing.id
+              ? { ...i, category, priority, needed, have, notes }
+              : i
+          );
+        } else {
+          items.push({
+            id: uuid(),
+            name,
+            category,
+            priority,
+            needed,
+            have,
+            notes
+          });
+        }
+      }
+
+      saveItems(items);
+      clearForm();
+      renderItems();
+    }
+
+    function clearForm() {
+      document.getElementById("itemName").value = "";
+      document.getElementById("itemCategory").value = "";
+      document.getElementById("itemPriority").value = "3";
+      document.getElementById("itemNeeded").value = "1";
+      document.getElementById("itemHave").value = "0";
+      document.getElementById("itemNotes").value = "";
+      document.getElementById("editingId").value = "";
+    }
+
+    function editItem(id) {
+      const items = loadItems();
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+
+      document.getElementById("itemName").value = item.name;
+      document.getElementById("itemCategory").value = item.category || "";
+      document.getElementById("itemPriority").value = String(item.priority);
+      document.getElementById("itemNeeded").value = String(item.needed);
+      document.getElementById("itemHave").value = String(item.have);
+      document.getElementById("itemNotes").value = item.notes || "";
+      document.getElementById("editingId").value = item.id;
+    }
+
+    function deleteItem(id) {
+      if (!confirm("Delete this item?")) return;
+      let items = loadItems();
+      items = items.filter(i => i.id !== id);
+      saveItems(items);
+      renderItems();
+    }
+
+    function adjustHave(id, delta) {
+      let items = loadItems();
+      items = items.map(i => {
+        if (i.id === id) {
+          const have = Math.max(i.have + delta, 0);
+          return { ...i, have };
+        }
+        return i;
+      });
+      saveItems(items);
+      renderItems();
+    }
+
+    document.getElementById("addItemBtn").addEventListener("click", addOrUpdateItem);
+    document.getElementById("clearFormBtn").addEventListener("click", clearForm);
+    document.getElementById("filterStatus").addEventListener("change", renderItems);
+    document.getElementById("sortMode").addEventListener("change", renderItems);
+
+    renderItems();
+  </script>
+</body>
+</html>
