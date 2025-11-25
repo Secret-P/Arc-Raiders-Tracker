@@ -1,8 +1,11 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Arc Raiders – Loot Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -20,6 +23,7 @@
       box-shadow: 0 10px 25px rgba(0,0,0,0.4);
     }
     h1 { margin-top: 0; }
+
     .form-row {
       display: flex;
       flex-wrap: wrap;
@@ -37,7 +41,11 @@
       opacity: 0.8;
       margin-bottom: 0.25rem;
     }
-    input[type="text"], input[type="number"], input[type="email"], input[type="password"], select, textarea {
+    input[type="text"],
+    input[type="number"],
+    input[type="email"],
+    select,
+    textarea {
       padding: 0.4rem 0.5rem;
       border-radius: 6px;
       border: 1px solid #303854;
@@ -58,6 +66,7 @@
     .btn-primary { background: #4f8cff; color: #fff; }
     .btn-secondary { background: #303854; color: #fff; }
     .btn-small { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
     .toolbar {
       display: flex;
       justify-content: space-between;
@@ -66,6 +75,7 @@
       flex-wrap: wrap;
       margin: 0.75rem 0;
     }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -79,6 +89,7 @@
     }
     th { background: #1b2238; }
     tr.done { opacity: 0.5; }
+
     .priority-pill {
       padding: 0.1rem 0.45rem;
       border-radius: 999px;
@@ -89,6 +100,7 @@
     .priority-high { background: #ff4f6a; }
     .priority-medium { background: #ffb74f; color: #201010; }
     .priority-low { background: #66c56b; color: #041407; }
+
     .status-badge {
       font-size: 0.75rem;
       padding: 0.1rem 0.4rem;
@@ -96,11 +108,13 @@
     }
     .status-active { background: #ffb74f; color: #201010; }
     .status-done { background: #66c56b; color: #041407; }
+
     .empty-state {
       text-align: center;
       padding: 1rem;
       opacity: 0.7;
     }
+
     .auth-bar {
       display: flex;
       flex-wrap: wrap;
@@ -113,9 +127,6 @@
       border: 1px solid #303854;
       font-size: 0.85rem;
     }
-    .auth-bar input {
-      max-width: 180px;
-    }
     .auth-status {
       flex: 1;
       min-width: 180px;
@@ -126,9 +137,13 @@
       gap: 0.25rem;
       flex-wrap: wrap;
     }
+    .auth-buttons input[type="email"] {
+      max-width: 200px;
+    }
     .auth-warning {
       font-size: 0.75rem;
       opacity: 0.7;
+      width: 100%;
       margin-top: 0.25rem;
     }
   </style>
@@ -137,23 +152,21 @@
   <div class="app-shell">
     <h1>Arc Raiders – Loot Tracker</h1>
     <p style="opacity:0.8;font-size:0.9rem;">
-      Track materials you’re farming. Log in to keep separate profiles per user (still stored locally for now).
+      Track the materials you’re farming. Log in with a magic link to keep a per-user profile (still stored locally for now).
     </p>
 
-    <!-- AUTH BAR (Firebase Auth + localStorage per user) -->
+    <!-- AUTH BAR: email-link login (passwordless) -->
     <div class="auth-bar">
       <div class="auth-status" id="authStatus">
         Not logged in (using <strong>Guest</strong> data).
       </div>
       <div class="auth-buttons">
         <input id="authEmail" type="email" placeholder="email@example.com">
-        <input id="authPassword" type="password" placeholder="password">
-        <button class="btn-secondary btn-small" id="signupBtn">Sign Up</button>
-        <button class="btn-secondary btn-small" id="loginBtn">Log In</button>
+        <button class="btn-secondary btn-small" id="sendLinkBtn">Send login link</button>
         <button class="btn-secondary btn-small" id="logoutBtn" style="display:none;">Log Out</button>
       </div>
       <div class="auth-warning" id="authWarning">
-        Data is stored per-user in this browser only for now. Cloud sync comes later.
+        You’ll get a magic link by email. Data is per-user in this browser only. Cloud sync comes later.
       </div>
     </div>
 
@@ -161,15 +174,15 @@
     <div id="form">
       <div class="form-row">
         <div>
-          <label>Item name</label>
+          <label for="itemName">Item name</label>
           <input id="itemName" type="text" placeholder="Flux Capacitor">
         </div>
         <div>
-          <label>Category</label>
+          <label for="itemCategory">Category</label>
           <input id="itemCategory" type="text" placeholder="Crafting, Weapon Mod…">
         </div>
         <div>
-          <label>Priority</label>
+          <label for="itemPriority">Priority</label>
           <select id="itemPriority">
             <option value="3">High</option>
             <option value="2">Medium</option>
@@ -177,22 +190,25 @@
           </select>
         </div>
       </div>
+
       <div class="form-row">
         <div>
-          <label>Needed</label>
+          <label for="itemNeeded">Needed</label>
           <input id="itemNeeded" type="number" min="1" value="1">
         </div>
         <div>
-          <label>Have</label>
+          <label for="itemHave">Have</label>
           <input id="itemHave" type="number" min="0" value="0">
         </div>
       </div>
+
       <div class="form-row">
         <div>
-          <label>Notes</label>
+          <label for="itemNotes">Notes</label>
           <textarea id="itemNotes" placeholder="e.g. Drops in canyon raid at night."></textarea>
         </div>
       </div>
+
       <button class="btn-primary" id="addItemBtn">Add / Update Item</button>
       <button class="btn-secondary" id="clearFormBtn">Clear Form</button>
       <input type="hidden" id="editingId" value="">
@@ -221,151 +237,170 @@
     <div id="itemsContainer"></div>
   </div>
 
-  <!-- Firebase JS SDK (compat version for simplicity) -->
-  <!-- You can bump versions later if needed; this is just an example -->
+  <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 
   <script>
     // ============================
-    // 1. FIREBASE INIT (AUTH ONLY)
+    // 1. FIREBASE CONFIG + GLOBALS
     // ============================
-const firebaseConfig = {
-  apiKey: "AIzaSyADyyxIc0P-eJouGtdOW6hQrr90XxoBb3c",
-  authDomain: "arc-raiders-tracker.firebaseapp.com",
-  projectId: "arc-raiders-tracker",
-  storageBucket: "arc-raiders-tracker.firebasestorage.app",
-  messagingSenderId: "449343013822",
-  appId: "1:449343013822:web:c5bdb5fdfb4f50f9bd6fef",
-  measurementId: "G-FSGT5JWX1T"
-};
 
-    // Only initialize if config is filled; otherwise the app still works in Guest mode.
+    // TODO: Paste your real firebaseConfig for project "ar-raiders-tracker" here:
+    // (from Project Settings → General → Your apps → Web app)
+    const firebaseConfig = {
+      // apiKey: "AIzaSy.......",
+      // authDomain: "ar-raiders-tracker.firebaseapp.com",
+      // projectId: "ar-raiders-tracker",
+      // storageBucket: "ar-raiders-tracker.appspot.com",
+      // messagingSenderId: "1234567890",
+      // appId: "1:1234567890:web:abcdef123456",
+    };
+
     let auth = null;
     let currentUser = null;
 
-    if (firebaseConfig && firebaseConfig.apiKey) {
-      firebase.initializeApp(firebaseConfig);
-      auth = firebase.auth();
-
-      // Listen for login/logout changes
-      auth.onAuthStateChanged((user) => {
-        currentUser = user || null;
-        updateAuthUI();
-        // Re-render items after user changes (so we see that user's local data)
-        renderItems();
-      });
-    } else {
-      console.warn("Firebase config not set; running in Guest-only mode.");
-      currentUser = null;
-      updateAuthUI();
-    }
-
-    // ============================
-    // 2. AUTH UI HANDLERS
-    // ============================
-
+    // DOM elements for auth UI
     const authStatusEl = document.getElementById("authStatus");
     const authWarningEl = document.getElementById("authWarning");
-    const emailInput = document.getElementById("authEmail");
-    const passwordInput = document.getElementById("authPassword");
-    const signupBtn = document.getElementById("signupBtn");
-    const loginBtn = document.getElementById("loginBtn");
-    const logoutBtn = document.getElementById("logoutBtn");
+    const emailInput   = document.getElementById("authEmail");
+    const sendLinkBtn  = document.getElementById("sendLinkBtn");
+    const logoutBtn    = document.getElementById("logoutBtn");
+
+    // ============================
+    // 2. AUTH UI HELPERS
+    // ============================
 
     function updateAuthUI() {
       if (!auth) {
-        authStatusEl.innerHTML = "Firebase not configured – using <strong>Guest</strong> data only.";
-        logoutBtn.style.display = "none";
-        signupBtn.disabled = true;
-        loginBtn.disabled = true;
-        emailInput.disabled = true;
-        passwordInput.disabled = true;
-        authWarningEl.textContent = "Add your Firebase config to enable login/logout.";
+        authStatusEl.innerHTML =
+          "Firebase not configured – using <strong>Guest</strong> data only.";
+        if (sendLinkBtn) sendLinkBtn.disabled = true;
+        if (logoutBtn) logoutBtn.style.display = "none";
+        if (emailInput) emailInput.disabled = true;
+        authWarningEl.textContent =
+          "Add your Firebase config in the HTML to enable magic-link login.";
         return;
       }
 
       if (currentUser) {
-        authStatusEl.innerHTML = `Logged in as <strong>${currentUser.email}</strong>.`;
-        logoutBtn.style.display = "inline-block";
-        signupBtn.style.display = "none";
-        loginBtn.style.display = "none";
-        emailInput.style.display = "none";
-        passwordInput.style.display = "none";
-        authWarningEl.textContent = "Your data is stored in localStorage under your user ID on this device.";
+        authStatusEl.innerHTML =
+          `Logged in as <strong>${currentUser.email}</strong>.`;
+        if (logoutBtn) logoutBtn.style.display = "inline-block";
+        if (sendLinkBtn) sendLinkBtn.style.display = "none";
+        if (emailInput) emailInput.style.display = "none";
+        authWarningEl.textContent =
+          "Your data is stored per-user in this browser's localStorage (cloud sync later).";
       } else {
-        authStatusEl.innerHTML = "Not logged in (using <strong>Guest</strong> data).";
-        logoutBtn.style.display = "none";
-        signupBtn.style.display = "inline-block";
-        loginBtn.style.display = "inline-block";
-        emailInput.style.display = "inline-block";
-        passwordInput.style.display = "inline-block";
-        authWarningEl.textContent = "Log in to keep a separate local profile; cloud sync will come later.";
+        authStatusEl.innerHTML =
+          "Not logged in (using <strong>Guest</strong> data).";
+        if (logoutBtn) logoutBtn.style.display = "none";
+        if (sendLinkBtn) {
+          sendLinkBtn.style.display = "inline-block";
+          sendLinkBtn.disabled = !auth;
+        }
+        if (emailInput) {
+          emailInput.style.display = "inline-block";
+          emailInput.disabled = !auth;
+        }
+        authWarningEl.textContent =
+          "Enter your email and tap 'Send login link'. When you click the link in your email, you'll be signed in.";
       }
     }
 
-    if (signupBtn) {
-      signupBtn.addEventListener("click", async () => {
+    // ============================
+    // 3. INIT AUTH + STATE LISTENER
+    // ============================
+
+    function initAuth() {
+      if (firebaseConfig && firebaseConfig.apiKey) {
+        firebase.initializeApp(firebaseConfig);
+        auth = firebase.auth();
+
+        auth.onAuthStateChanged((user) => {
+          currentUser = user || null;
+          updateAuthUI();
+          renderItems();
+        });
+      } else {
+        // No Firebase config → guest mode only
+        auth = null;
+        currentUser = null;
+        updateAuthUI();
+      }
+    }
+
+    // Send magic link
+    if (sendLinkBtn) {
+      sendLinkBtn.addEventListener("click", async () => {
         if (!auth) return;
-        const email = emailInput.value.trim();
-        const password = passwordInput.value.trim();
-        if (!email || !password) {
-          alert("Enter email and password to sign up.");
+        const email = (emailInput.value || "").trim();
+        if (!email) {
+          alert("Enter an email address first.");
           return;
         }
+
+        const actionCodeSettings = {
+          // Must be your deployed URL, and be in Authorized Domains
+          url: "https://secret-p.github.io/Arc-Raiders-Tracker/",
+          handleCodeInApp: true,
+        };
+
         try {
-          await auth.createUserWithEmailAndPassword(email, password);
-          emailInput.value = "";
-          passwordInput.value = "";
+          await auth.sendSignInLinkToEmail(email, actionCodeSettings);
+          window.localStorage.setItem("arc_magic_email_for_signin", email);
+          alert("Magic link sent! Check your email.");
         } catch (e) {
-          console.error(e);
-          alert("Sign up failed: " + e.message);
+          console.error("Error sending magic link", e);
+          alert("Could not send magic link: " + e.message);
         }
       });
     }
 
-    if (loginBtn) {
-      loginBtn.addEventListener("click", async () => {
-        if (!auth) return;
-        const email = emailInput.value.trim();
-        const password = passwordInput.value.trim();
-        if (!email || !password) {
-          alert("Enter email and password to log in.");
-          return;
-        }
-        try {
-          await auth.signInWithEmailAndPassword(email, password);
-          emailInput.value = "";
-          passwordInput.value = "";
-        } catch (e) {
-          console.error(e);
-          alert("Log in failed: " + e.message);
-        }
-      });
-    }
-
+    // Logout
     if (logoutBtn) {
       logoutBtn.addEventListener("click", async () => {
         if (!auth) return;
         try {
           await auth.signOut();
         } catch (e) {
-          console.error(e);
+          console.error("Logout failed", e);
           alert("Logout failed: " + e.message);
         }
       });
     }
 
+    // Complete sign-in if we arrived via magic link
+    async function handleEmailLinkSignIn() {
+      if (!auth) return;
+      try {
+        if (auth.isSignInWithEmailLink(window.location.href)) {
+          let email = window.localStorage.getItem("arc_magic_email_for_signin");
+          if (!email) {
+            email = window.prompt(
+              "Please confirm your email address to complete sign-in:"
+            );
+          }
+          if (!email) return;
+
+          await auth.signInWithEmailLink(email, window.location.href);
+          window.localStorage.removeItem("arc_magic_email_for_signin");
+          // onAuthStateChanged will fire next
+        }
+      } catch (e) {
+        console.error("Error completing email link sign-in", e);
+        alert("Sign-in with link failed: " + e.message);
+      }
+    }
+
     // ============================
-    // 3. LOCAL STORAGE HELPERS
+    // 4. LOCAL STORAGE HELPERS
     // ============================
 
     function getStorageKey() {
-      // If logged in, use a per-user key based on Firebase uid
       if (currentUser && currentUser.uid) {
         return "arc_raiders_loot_v1_" + currentUser.uid;
       }
-      // Fallback: guest data
       return "arc_raiders_loot_v1_guest";
     }
 
@@ -398,7 +433,7 @@ const firebaseConfig = {
     }
 
     // ============================
-    // 4. ITEM CRUD + RENDERING
+    // 5. ITEM CRUD + RENDERING
     // ============================
 
     function addOrUpdateItem() {
@@ -421,7 +456,9 @@ const firebaseConfig = {
             : i
         );
       } else {
-        const existing = items.find(i => i.name.toLowerCase() === name.toLowerCase());
+        const existing = items.find(
+          i => i.name.toLowerCase() === name.toLowerCase()
+        );
         if (existing) {
           items = items.map(i =>
             i.id === existing.id
@@ -429,7 +466,15 @@ const firebaseConfig = {
               : i
           );
         } else {
-          items.push({ id: uuid(), name, category, priority, needed, have, notes });
+          items.push({
+            id: uuid(),
+            name,
+            category,
+            priority,
+            needed,
+            have,
+            notes
+          });
         }
       }
 
@@ -512,7 +557,8 @@ const firebaseConfig = {
       }
 
       if (items.length === 0) {
-        container.innerHTML = '<div class="empty-state">No items yet. Add something above to start tracking.</div>';
+        container.innerHTML =
+          '<div class="empty-state">No items yet. Add something above to start tracking.</div>';
         return;
       }
 
@@ -535,8 +581,11 @@ const firebaseConfig = {
 
       for (const item of items) {
         const priorityClass =
-          item.priority === 3 ? "priority-high" :
-          item.priority === 2 ? "priority-medium" : "priority-low";
+          item.priority === 3
+            ? "priority-high"
+            : item.priority === 2
+            ? "priority-medium"
+            : "priority-low";
 
         const statusClass = item.done ? "status-done" : "status-active";
         const statusText = item.done ? "Done" : "Farming";
@@ -569,7 +618,7 @@ const firebaseConfig = {
     }
 
     // ============================
-    // 5. INITIAL WIRING
+    // 6. INITIAL WIRING
     // ============================
 
     document.getElementById("addItemBtn").addEventListener("click", addOrUpdateItem);
@@ -577,12 +626,15 @@ const firebaseConfig = {
     document.getElementById("filterStatus").addEventListener("change", renderItems);
     document.getElementById("sortMode").addEventListener("change", renderItems);
 
-    // If Firebase isn't configured, we won’t get an auth state change,
-    // so manually set the UI and render once.
-    if (!auth) {
-      updateAuthUI();
-      renderItems();
-    }
+    (async function initApp() {
+      initAuth();
+      await handleEmailLinkSignIn();
+      if (!auth) {
+        // No Firebase → just render Guest items
+        renderItems();
+      }
+      // If Firebase is configured, onAuthStateChanged will render after login state is resolved
+    })();
   </script>
 </body>
 </html>
