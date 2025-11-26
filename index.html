@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -42,7 +43,6 @@
     }
     input[type="text"],
     input[type="number"],
-    input[type="email"],
     select,
     textarea {
       padding: 0.4rem 0.5rem;
@@ -137,9 +137,6 @@
       flex-wrap: wrap;
       align-items: center;
     }
-    .auth-buttons input[type="email"] {
-      max-width: 200px;
-    }
     .auth-warning {
       font-size: 0.75rem;
       opacity: 0.7;
@@ -152,7 +149,7 @@
   <div class="app-shell">
     <h1>Arc Raiders – Loot Tracker</h1>
     <p style="opacity:0.8;font-size:0.9rem;">
-      Track the materials you’re farming. Log in with a magic link to keep a per-user profile (still stored locally for now).
+      Track the materials you’re farming. Sign in with Google to sync your loot list across devices.
     </p>
 
     <!-- AUTH BAR -->
@@ -161,12 +158,11 @@
         Not logged in (using <strong>Guest</strong> data).
       </div>
       <div class="auth-buttons">
-        <input id="authEmail" type="email" placeholder="email@example.com">
-        <button class="btn-secondary btn-small" id="sendLinkBtn">Send login link</button>
+        <button class="btn-secondary btn-small" id="googleLoginBtn">Sign in with Google</button>
         <button class="btn-secondary btn-small" id="logoutBtn" style="display:none;">Log Out</button>
       </div>
       <div class="auth-warning" id="authWarning">
-        You’ll get a magic link by email. Data is per-user in this browser only. Cloud sync comes later.
+        Guests are stored locally on this device only. When signed in with Google, your items sync to the cloud per account.
       </div>
     </div>
 
@@ -244,7 +240,7 @@
 
   <script>
     // ============================
-    // 1. FIREBASE CONFIG
+    // 1. FIREBASE CONFIG & GLOBALS
     // ============================
 
     const firebaseConfig = {
@@ -258,14 +254,25 @@
     };
 
     let auth = null;
+    let db = null;
     let currentUser = null;
-    let db = null; // Firestore will go here
 
     const authStatusEl = document.getElementById("authStatus");
     const authWarningEl = document.getElementById("authWarning");
-    const emailInput   = document.getElementById("authEmail");
-    const sendLinkBtn  = document.getElementById("sendLinkBtn");
-    const logoutBtn    = document.getElementById("logoutBtn");
+    const googleLoginBtn = document.getElementById("googleLoginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    // Form + UI elements
+    const itemName      = document.getElementById("itemName");
+    const itemCategory  = document.getElementById("itemCategory");
+    const itemPriority  = document.getElementById("itemPriority");
+    const itemNeeded    = document.getElementById("itemNeeded");
+    const itemHave      = document.getElementById("itemHave");
+    const itemNotes     = document.getElementById("itemNotes");
+    const editingIdEl   = document.getElementById("editingId");
+    const filterStatus  = document.getElementById("filterStatus");
+    const sortModeEl    = document.getElementById("sortMode");
+    const itemsContainer = document.getElementById("itemsContainer");
 
     // ============================
     // 2. LOCAL STORAGE HELPERS
@@ -284,79 +291,14 @@
     }
 
     function saveItems(items) {
-       // Always update localStorage immediately for fast UI + offline
-       localStorage.setItem(getStorageKey(), JSON.stringify(items));
+      // Always update localStorage immediately for snappy UI
+      localStorage.setItem(getStorageKey(), JSON.stringify(items));
 
-       // If we have a logged-in user and Firestore, sync to the cloud as well
-       if (currentUser && db) {
-         syncItemsToFirestore(items);
-       }
-     }
-// ----------------------------
-// Firestore sync helpers
-// ----------------------------
-
-// Push the full items array to Firestore for the current user.
-// Simple approach: clear the existing docs and rewrite them.
-async function syncItemsToFirestore(items) {
-  try {
-    if (!currentUser || !db) return;
-
-    const colRef = db
-      .collection("users")
-      .doc(currentUser.uid)
-      .collection("items");
-
-    // Start a batch so we can do everything as one write
-    const batch = db.batch();
-
-    // 1) Delete existing docs
-    const existingSnap = await colRef.get();
-    existingSnap.forEach(doc => {
-      batch.delete(doc.ref);
-    });
-
-    // 2) Write current items
-    items.forEach(item => {
-      const docRef = colRef.doc(item.id);
-      batch.set(docRef, item);
-    });
-
-    await batch.commit();
-  } catch (err) {
-    console.error("Failed to sync items to Firestore:", err);
-    // Optional: you could show a toast/alert here in the future
-  }
-}
-
-// Load items from Firestore for the current user,
-// save them into localStorage, then render the table.
-async function loadItemsFromFirestore() {
-  try {
-    if (!currentUser || !db) {
-      renderItems();
-      return;
+      // If logged in & Firestore available → sync to cloud
+      if (currentUser && db) {
+        syncItemsToFirestore(items);
+      }
     }
-
-    const colRef = db
-      .collection("users")
-      .doc(currentUser.uid)
-      .collection("items");
-
-    const snap = await colRef.get();
-    const items = snap.docs.map(doc => doc.data());
-
-    // Cache in localStorage so the rest of the app can stay synchronous
-    localStorage.setItem(getStorageKey(), JSON.stringify(items));
-
-    renderItems();
-  } catch (err) {
-    console.error("Failed to load items from Firestore:", err);
-    // Fallback: still render whatever is in localStorage
-    renderItems();
-  }
-}
-
 
     function getPriorityLabel(p) {
       return p === 3 ? "High" : p === 2 ? "Medium" : "Low";
@@ -367,19 +309,65 @@ async function loadItemsFromFirestore() {
     }
 
     // ============================
-    // 3. ITEM CRUD
+    // 3. FIRESTORE SYNC HELPERS
     // ============================
 
-    const itemName      = document.getElementById("itemName");
-    const itemCategory  = document.getElementById("itemCategory");
-    const itemPriority  = document.getElementById("itemPriority");
-    const itemNeeded    = document.getElementById("itemNeeded");
-    const itemHave      = document.getElementById("itemHave");
-    const itemNotes     = document.getElementById("itemNotes");
-    const editingIdEl   = document.getElementById("editingId");
-    const filterStatus  = document.getElementById("filterStatus");
-    const sortModeEl    = document.getElementById("sortMode");
-    const itemsContainer = document.getElementById("itemsContainer");
+    async function syncItemsToFirestore(items) {
+      try {
+        if (!currentUser || !db) return;
+
+        const colRef = db
+          .collection("users")
+          .doc(currentUser.uid)
+          .collection("items");
+
+        const batch = db.batch();
+
+        // Delete existing docs
+        const existingSnap = await colRef.get();
+        existingSnap.forEach(doc => batch.delete(doc.ref));
+
+        // Write current items
+        items.forEach(item => {
+          const docRef = colRef.doc(item.id);
+          batch.set(docRef, item);
+        });
+
+        await batch.commit();
+      } catch (err) {
+        console.error("Failed to sync items to Firestore:", err);
+      }
+    }
+
+    async function loadItemsFromFirestore() {
+      try {
+        if (!currentUser || !db) {
+          renderItems();
+          return;
+        }
+
+        const colRef = db
+          .collection("users")
+          .doc(currentUser.uid)
+          .collection("items");
+
+        const snap = await colRef.get();
+        const items = snap.docs.map(doc => doc.data());
+
+        // Cache to localStorage for fast usage
+        localStorage.setItem(getStorageKey(), JSON.stringify(items));
+
+        renderItems();
+      } catch (err) {
+        console.error("Failed to load items from Firestore:", err);
+        // Fall back to whatever is in localStorage
+        renderItems();
+      }
+    }
+
+    // ============================
+    // 4. ITEM CRUD
+    // ============================
 
     function addOrUpdateItem() {
       const name = itemName.value.trim();
@@ -459,7 +447,7 @@ async function loadItemsFromFirestore() {
     }
 
     // ============================
-    // 4. RENDER TABLE
+    // 5. RENDER TABLE
     // ============================
 
     function renderItems() {
@@ -487,7 +475,8 @@ async function loadItemsFromFirestore() {
       }
 
       if (items.length === 0) {
-        itemsContainer.innerHTML = `<div class="empty-state">No items yet. Add something above to start tracking.</div>`;
+        itemsContainer.innerHTML =
+          `<div class="empty-state">No items yet. Add something above to start tracking.</div>`;
         return;
       }
 
@@ -545,84 +534,62 @@ async function loadItemsFromFirestore() {
     }
 
     // ============================
-    // 5. AUTH + MAGIC LINK
+    // 6. AUTH (GOOGLE SIGN-IN)
     // ============================
 
     function updateAuthUI() {
       if (!auth) return;
 
       if (currentUser) {
-        authStatusEl.innerHTML = `Logged in as <strong>${currentUser.email}</strong>.`;
+        authStatusEl.innerHTML =
+          `Logged in as <strong>${currentUser.displayName || currentUser.email}</strong>.`;
         logoutBtn.style.display = "inline-block";
+        googleLoginBtn.style.display = "none";
+        authWarningEl.textContent =
+          "Your items are synced to the cloud for this Google account.";
       } else {
-        authStatusEl.innerHTML = `Not logged in (using <strong>Guest</strong> data).`;
+        authStatusEl.innerHTML =
+          `Not logged in (using <strong>Guest</strong> data).`;
         logoutBtn.style.display = "none";
+        googleLoginBtn.style.display = "inline-block";
+        authWarningEl.textContent =
+          "Guests are stored only in this browser. Sign in with Google to sync your loot across devices.";
       }
     }
 
     function initAuth() {
-       firebase.initializeApp(firebaseConfig);
-       auth = firebase.auth();
-       db = firebase.firestore(); // Initialize Firestore
+      firebase.initializeApp(firebaseConfig);
+      auth = firebase.auth();
+      db = firebase.firestore();
 
-       auth.onAuthStateChanged((user) => {
-         currentUser = user || null;
-         updateAuthUI();
+      auth.onAuthStateChanged((user) => {
+        currentUser = user || null;
+        updateAuthUI();
 
-         // When a user is logged in, try to pull their items from Firestore.
-         // If not logged in, we just render whatever is in localStorage.
-         if (currentUser) {
-           loadItemsFromFirestore();
-         } else {
-           renderItems();
-         }
-       });
-     }
-    async function handleEmailLinkSignIn() {
-      if (!auth) return;
-      if (!auth.isSignInWithEmailLink(window.location.href)) return;
-
-      let email = localStorage.getItem("arc_magic_email");
-      if (!email) {
-        email = prompt("Confirm your email to complete sign-in:");
-      }
-      if (!email) return;
-
-      try {
-        await auth.signInWithEmailLink(email, window.location.href);
-        localStorage.removeItem("arc_magic_email");
-      } catch (err) {
-        console.error("Error completing magic link sign-in:", err);
-        alert("Sign-in failed: " + err.message);
-      }
+        if (currentUser) {
+          // On login, pull items from Firestore
+          loadItemsFromFirestore();
+        } else {
+          // As guest, just use whatever is in localStorage
+          renderItems();
+        }
+      });
     }
 
-    sendLinkBtn.addEventListener("click", async () => {
+    // Google sign-in button
+    googleLoginBtn.addEventListener("click", () => {
       if (!auth) {
         alert("Auth not ready yet. Try again in a moment.");
         return;
       }
-      const email = emailInput.value.trim();
-      if (!email) {
-        alert("Enter an email address first.");
-        return;
-      }
-
-      const actionCodeSettings = {
-        url: "https://secret-p.github.io/Arc-Raiders-Tracker/",
-        handleCodeInApp: true,
-      };
-
-      try {
-        await auth.sendSignInLinkToEmail(email, actionCodeSettings);
-        localStorage.setItem("arc_magic_email", email);
-        alert("Magic link sent! Check your email.");
-      } catch (err) {
-        console.error("Error sending magic link:", err);
-        alert("Could not send magic link: " + err.message);
-      }
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider).catch(err => {
+        console.error("Google sign-in failed:", err);
+        alert("Google sign-in failed: " + err.message);
+      });
     });
 
+    // Logout button
     logoutBtn.addEventListener("click", () => {
       if (!auth) return;
       auth.signOut().catch(err => {
@@ -632,7 +599,7 @@ async function loadItemsFromFirestore() {
     });
 
     // ============================
-    // 6. EVENT WIRING & INIT
+    // 7. EVENT WIRING & INIT
     // ============================
 
     document.getElementById("addItemBtn").addEventListener("click", addOrUpdateItem);
@@ -640,13 +607,9 @@ async function loadItemsFromFirestore() {
     filterStatus.addEventListener("change", renderItems);
     sortModeEl.addEventListener("change", renderItems);
 
-    (async function initApp() {
+    (function initApp() {
       initAuth();
-      await handleEmailLinkSignIn();
-      // If onAuthStateChanged hasn't fired yet, at least show items once
-      if (!auth) {
-        renderItems();
-      }
+      // renderItems() will be called from auth state changes
     })();
   </script>
 </body>
